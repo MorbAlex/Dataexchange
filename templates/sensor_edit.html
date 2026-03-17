@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card narrow">
+  <h2>Sensor {{ sensor.id }} bearbeiten</h2>
+  <form method="post" class="form-grid">
+    <label>Name<input name="name" value="{{ sensor.name }}"></label>
+    <label>Kanal<input name="channel" type="number" value="{{ sensor.channel }}"></label>
+    <label>Einheit<input name="unit" value="{{ sensor.unit }}"></label>
+    <label>Min raw<input name="min_raw" type="number" step="any" value="{{ sensor.min_raw }}"></label>
+    <label>Max raw<input name="max_raw" type="number" step="any" value="{{ sensor.max_raw }}"></label>
+    <label>Min skaliert<input name="min_scaled" type="number" step="any" value="{{ sensor.min_scaled }}"></label>
+    <label>Max skaliert<input name="max_scaled" type="number" step="any" value="{{ sensor.max_scaled }}"></label>
+    <label>Alarm low<input name="alarm_low" type="number" step="any" value="{{ sensor.alarm_low if sensor.alarm_low is not none else '' }}"></label>
+    <label>Alarm high<input name="alarm_high" type="number" step="any" value="{{ sensor.alarm_high if sensor.alarm_high is not none else '' }}"></label>
+    <label>Sample interval ms<input name="sample_interval_ms" type="number" value="{{ sensor.sample_interval_ms }}"></label>
+    <label class="checkbox"><input name="enabled" type="checkbox" {% if sensor.enabled %}checked{% endif %}> Aktiv</label>
+    <div class="actions">
+      <button type="submit">Speichern</button>
+      <a class="button secondary" href="{{ url_for('sensors') }}">Zurück</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

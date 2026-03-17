@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CM5 Gateway</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta http-equiv="refresh" content="15">
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>CM5 Gateway</h1>
+      <p class="subline">Prototyp für Sensorik und Modem-Management auf dem Raspberry CM5</p>
+    </div>
+    <nav class="tabs">
+      <a class="{% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a class="{% if request.endpoint == 'sensor_status' %}active{% endif %}" href="{{ url_for('sensor_status') }}">Sensor Status</a>
+      <a class="{% if request.endpoint == 'sensor_config' %}active{% endif %}" href="{{ url_for('sensor_config') }}">Sensor Konfiguration</a>
+      <a class="{% if request.endpoint == 'modem_status' %}active{% endif %}" href="{{ url_for('modem_status') }}">Modem Status</a>
+      <a class="{% if request.endpoint == 'modem_config' %}active{% endif %}" href="{{ url_for('modem_config') }}">Modem Konfiguration</a>
+    </nav>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <section class="flash-wrap">
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+      </section>
+    {% endif %}
+  {% endwith %}
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

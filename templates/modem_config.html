@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Modem Konfiguration</h2>
+  <p>Persistente Einstellungen für APN, PIN und Verbindungsverhalten.</p>
+</section>
+
+<section class="card narrow">
+  <form method="post" class="form-grid two-cols">
+    <label>APN<input name="apn" value="{{ modem_config.apn }}"></label>
+    <label>PIN<input name="pin" type="password" value="{{ modem_config.pin }}"></label>
+    <label>Bevorzugter Modus
+      <select name="preferred_mode">
+        <option value="auto" {% if modem_config.preferred_mode == 'auto' %}selected{% endif %}>Auto</option>
+        <option value="lte" {% if modem_config.preferred_mode == 'lte' %}selected{% endif %}>LTE</option>
+        <option value="5g" {% if modem_config.preferred_mode == '5g' %}selected{% endif %}>5G</option>
+      </select>
+    </label>
+    <div class="stacked-checkboxes">
+      <label class="checkbox"><input name="auto_connect" type="checkbox" {% if modem_config.auto_connect %}checked{% endif %}> Auto Connect</label>
+      <label class="checkbox"><input name="roaming_allowed" type="checkbox" {% if modem_config.roaming_allowed %}checked{% endif %}> Roaming erlaubt</label>
+    </div>
+    <div class="actions full-row">
+      <button type="submit">Konfiguration speichern</button>
+    </div>
+  </form>
+</section>
+
+<section class="card narrow">
+  <div class="card-title-row">
+    <h3>Aktueller Modemzustand</h3>
+    <span class="badge {{ 'ok' if modem.available else 'unknown' }}">{{ modem.registration_state }}</span>
+  </div>
+  <dl class="kv">
+    <dt>Operator</dt><dd>{{ modem.operator }}</dd>
+    <dt>Technologie</dt><dd>{{ modem.access_tech }}</dd>
+    <dt>Signal</dt><dd>{{ modem.signal_quality }}</dd>
+    <dt>SIM</dt><dd>{{ modem.sim_state }}</dd>
+  </dl>
+  <div class="actions inline top-gap">
+    <form method="post" action="{{ url_for('modem_connect') }}">
+      <input type="hidden" name="return_to" value="modem_config">
+      <button type="submit">Mit gespeicherter APN verbinden</button>
+    </form>
+    <form method="post" action="{{ url_for('modem_disconnect') }}">
+      <input type="hidden" name="return_to" value="modem_config">
+      <button class="secondary" type="submit">Trennen</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
