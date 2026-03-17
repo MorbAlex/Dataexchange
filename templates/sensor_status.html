@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sensor Status</h1>
+<table class="table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>Kanal</th>
+      <th>Rohwert</th>
+      <th>Skaliert</th>
+      <th>Einheit</th>
+      <th>Status</th>
+      <th>Updated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in sensors %}
+    <tr>
+      <td>{{ s.id }}</td>
+      <td>{{ s.name }}</td>
+      <td>{{ s.channel }}</td>
+      <td>{{ "%.2f"|format(s.raw_value or 0) }}</td>
+      <td>{{ "%.2f"|format(s.scaled_value or 0) }}</td>
+      <td>{{ s.unit }}</td>
+      <td><span class="badge {{ s.state }}">{{ s.state }}</span></td>
+      <td>{{ s.updated_at }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Modem</h2>
+    <div class="kv"><span>Status</span><strong>{{ modem.runtime_status }}</strong></div>
+    <div class="kv"><span>Provider</span><strong>{{ modem.operator }}</strong></div>
+    <div class="kv"><span>Technologie</span><strong>{{ modem.access_tech }}</strong></div>
+    <div class="kv"><span>Signal</span><strong>{{ modem.signal_quality }}</strong></div>
+    <div class="kv"><span>IP</span><strong>{{ modem.ip_address or '-' }}</strong></div>
+  </section>
+
+  <section class="card">
+    <h2>Upload</h2>
+    <div class="kv"><span>Letzter Upload</span><strong>{{ upload_runtime.last_upload_at or '-' }}</strong></div>
+    <div class="kv"><span>Status</span><strong>{{ upload_runtime.last_upload_status or '-' }}</strong></div>
+    <div class="kv"><span>Fehler</span><strong>{{ upload_runtime.last_upload_error or '-' }}</strong></div>
+  </section>
+</div>
+
+<h2>Sensoren</h2>
+<div class="grid four">
+  {% for s in sensors %}
+  <section class="card sensor {{ s.state }}">
+    <h3>{{ s.name }}</h3>
+    <div class="big">{{ "%.2f"|format(s.scaled_value or 0) }} {{ s.unit }}</div>
+    <div class="muted">Rohwert: {{ "%.2f"|format(s.raw_value or 0) }}</div>
+    <div class="state">{{ s.state }}</div>
+    <div class="muted">Letztes Update: {{ s.updated_at }}</div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

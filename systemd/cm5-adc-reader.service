@@ -1,0 +1,14 @@
+[Unit]
+Description=CM5 Prototype ADC Reader
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/cm5_python_prototype_qmi
+ExecStart=/opt/cm5_python_prototype_qmi/.venv/bin/python /opt/cm5_python_prototype_qmi/scripts/adc_reader.py
+Restart=always
+User=pi
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

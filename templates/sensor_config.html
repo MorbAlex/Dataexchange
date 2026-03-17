@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sensor Konfiguration</h1>
+<form method="post">
+  <div class="grid two">
+    {% for s in sensors %}
+    <section class="card">
+      <h2>{{ s.name }}</h2>
+      <div class="form-grid">
+        <label>Name <input name="sensor_{{ s.id }}_name" value="{{ s.name }}"></label>
+        <label>Aktiv <input type="checkbox" name="sensor_{{ s.id }}_enabled" {% if s.enabled %}checked{% endif %}></label>
+        <label>Kanal <input type="number" name="sensor_{{ s.id }}_channel" value="{{ s.channel }}"></label>
+        <label>Einheit <input name="sensor_{{ s.id }}_unit" value="{{ s.unit }}"></label>
+        <label>Min Raw <input type="number" step="any" name="sensor_{{ s.id }}_min_raw" value="{{ s.min_raw }}"></label>
+        <label>Max Raw <input type="number" step="any" name="sensor_{{ s.id }}_max_raw" value="{{ s.max_raw }}"></label>
+        <label>Min Scaled <input type="number" step="any" name="sensor_{{ s.id }}_min_scaled" value="{{ s.min_scaled }}"></label>
+        <label>Max Scaled <input type="number" step="any" name="sensor_{{ s.id }}_max_scaled" value="{{ s.max_scaled }}"></label>
+        <label>Alarm Low <input type="number" step="any" name="sensor_{{ s.id }}_alarm_low" value="{{ s.alarm_low }}"></label>
+        <label>Alarm High <input type="number" step="any" name="sensor_{{ s.id }}_alarm_high" value="{{ s.alarm_high }}"></label>
+        <label>Sample Intervall (ms) <input type="number" name="sensor_{{ s.id }}_sample_interval_ms" value="{{ s.sample_interval_ms }}"></label>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  <div class="actions">
+    <button class="btn primary" type="submit">Speichern</button>
+  </div>
+</form>
+{% endblock %}

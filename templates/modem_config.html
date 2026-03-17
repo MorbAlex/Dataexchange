@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Modem Konfiguration</h1>
+<form method="post">
+  <section class="card">
+    <div class="form-grid">
+      <label>APN <input name="apn" value="{{ config.apn }}"></label>
+      <label>PIN <input name="pin" value="{{ config.pin }}"></label>
+      <label>Auto Connect <input type="checkbox" name="auto_connect" {% if config.auto_connect %}checked{% endif %}></label>
+      <label>Bevorzugter Modus
+        <select name="preferred_mode">
+          <option value="auto" {% if config.preferred_mode == 'auto' %}selected{% endif %}>Auto</option>
+          <option value="5g" {% if config.preferred_mode == '5g' %}selected{% endif %}>5G bevorzugt</option>
+          <option value="lte" {% if config.preferred_mode == 'lte' %}selected{% endif %}>LTE bevorzugt</option>
+        </select>
+      </label>
+      <label>Roaming erlauben <input type="checkbox" name="roaming_allowed" {% if config.roaming_allowed %}checked{% endif %}></label>
+    </div>
+    <div class="muted">
+      Letzter Status: {{ runtime.last_status }} |
+      Letzte IP: {{ runtime.last_ip or '-' }} |
+      Letzter Fehler: {{ runtime.last_error or '-' }}
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit">Speichern</button>
+    </div>
+  </section>
+</form>
+{% endblock %}

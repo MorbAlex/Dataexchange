@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Modem Status</h1>
+<section class="card">
+  <div class="kv"><span>Vorhanden</span><strong>{{ 'Ja' if modem.present else 'Nein' }}</strong></div>
+  <div class="kv"><span>Verbindungsstatus</span><strong>{{ modem.runtime_status }}</strong></div>
+  <div class="kv"><span>Provider</span><strong>{{ modem.operator }}</strong></div>
+  <div class="kv"><span>Technologie</span><strong>{{ modem.access_tech }}</strong></div>
+  <div class="kv"><span>Signal</span><strong>{{ modem.signal_quality }}</strong></div>
+  <div class="kv"><span>Registrierung</span><strong>{{ modem.registration_state }}</strong></div>
+  <div class="kv"><span>SIM</span><strong>{{ modem.sim_state }}</strong></div>
+  <div class="kv"><span>IP</span><strong>{{ modem.ip_address or '-' }}</strong></div>
+  <div class="kv"><span>QMI Handle</span><strong>{{ modem.packet_data_handle or '-' }}</strong></div>
+  <div class="kv"><span>Letzter Fehler</span><strong>{{ modem.last_error or '-' }}</strong></div>
+  <div class="actions">
+    <form method="post" action="{{ url_for('main.modem_connect') }}">
+      <button class="btn primary" type="submit">Verbinden</button>
+    </form>
+    <form method="post" action="{{ url_for('main.modem_disconnect') }}">
+      <button class="btn danger" type="submit">Trennen</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
