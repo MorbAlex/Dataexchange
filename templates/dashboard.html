@@ -2,49 +2,106 @@
 {% block content %}
 <h1>Dashboard</h1>
 
-<div class="grid">
+<div class="grid two">
+  <section class="card">
+    <h2>Modem</h2>
+    <div class="kv"><span>Status</span><strong id="modem-runtime-status">{{ modem.runtime_status }}</strong></div>
+    <div class="kv"><span>Provider</span><strong id="modem-operator">{{ modem.operator }}</strong></div>
+    <div class="kv"><span>Technologie</span><strong id="modem-access-tech">{{ modem.access_tech }}</strong></div>
+    <div class="kv"><span>Signal</span><strong id="modem-signal-quality">{{ modem.signal_quality }}</strong></div>
+    <div class="kv"><span>IP</span><strong id="modem-ip-address">{{ modem.ip_address or '-' }}</strong></div>
+  </section>
+
+  <section class="card">
+    <h2>Upload</h2>
+    <div class="kv"><span>Letzter Upload</span><strong id="upload-last-upload-at">{{ upload_runtime.last_upload_at or '-' }}</strong></div>
+    <div class="kv"><span>Status</span><strong id="upload-last-upload-status">{{ upload_runtime.last_upload_status or '-' }}</strong></div>
+    <div class="kv"><span>Fehler</span><strong id="upload-last-upload-error">{{ upload_runtime.last_upload_error or '-' }}</strong></div>
+  </section>
+</div>
+
+<h2>Sensoren</h2>
+<div class="grid four">
   {% for s in sensors %}
-  <div class="card">
-    <h3 id="name-{{ s.id }}">{{ s.name }}</h3>
-    <p>Kanal: <span id="channel-{{ s.id }}">{{ s.channel }}</span></p>
-    <p>Rohwert: <span id="raw-{{ s.id }}">{{ "%.2f"|format(s.raw_value or 0) }}</span></p>
-    <p>Wert: <span id="scaled-{{ s.id }}">{{ "%.2f"|format(s.scaled_value or 0) }}</span> <span id="unit-{{ s.id }}">{{ s.unit }}</span></p>
-    <p>Status: <span id="state-{{ s.id }}" class="badge {{ s.state }}">{{ s.state }}</span></p>
-    <p>Updated: <span id="updated-{{ s.id }}">{{ s.updated_at }}</span></p>
-    <p><a href="/sensors/chart/{{ s.id }}">Verlauf</a></p>
-  </div>
+  <section id="sensor-card-{{ s.id }}" class="card sensor {{ s.state }}">
+    <h3 id="sensor-name-{{ s.id }}">{{ s.name }}</h3>
+    <div class="big">
+      <span id="sensor-scaled-{{ s.id }}">{{ "%.2f"|format(s.scaled_value or 0) }}</span>
+      <span id="sensor-unit-{{ s.id }}">{{ s.unit }}</span>
+    </div>
+    <div class="muted">
+      Rohwert: <span id="sensor-raw-{{ s.id }}">{{ "%.2f"|format(s.raw_value or 0) }}</span>
+    </div>
+    <div id="sensor-state-{{ s.id }}" class="state">{{ s.state }}</div>
+    <div class="muted">
+      Letztes Update: <span id="sensor-updated-{{ s.id }}">{{ s.updated_at }}</span>
+    </div>
+  </section>
   {% endfor %}
 </div>
 
 <script>
 async function refreshDashboard() {
   try {
-    const res = await fetch("/api/sensors/live", { cache: "no-store" });
-    const sensors = await res.json();
+    const sensorRes = await fetch("/api/sensors/live", { cache: "no-store" });
+    const sensors = await sensorRes.json();
 
     for (const s of sensors) {
-      const name = document.getElementById(`name-${s.id}`);
-      const channel = document.getElementById(`channel-${s.id}`);
-      const raw = document.getElementById(`raw-${s.id}`);
-      const scaled = document.getElementById(`scaled-${s.id}`);
-      const unit = document.getElementById(`unit-${s.id}`);
-      const state = document.getElementById(`state-${s.id}`);
-      const updated = document.getElementById(`updated-${s.id}`);
+      const card = document.getElementById(`sensor-card-${s.id}`);
+      const name = document.getElementById(`sensor-name-${s.id}`);
+      const scaled = document.getElementById(`sensor-scaled-${s.id}`);
+      const unit = document.getElementById(`sensor-unit-${s.id}`);
+      const raw = document.getElementById(`sensor-raw-${s.id}`);
+      const state = document.getElementById(`sensor-state-${s.id}`);
+      const updated = document.getElementById(`sensor-updated-${s.id}`);
 
       if (name) name.textContent = s.name ?? "";
-      if (channel) channel.textContent = s.channel ?? "";
-      if (raw) raw.textContent = Number(s.raw_value ?? 0).toFixed(2);
       if (scaled) scaled.textContent = Number(s.scaled_value ?? 0).toFixed(2);
       if (unit) unit.textContent = s.unit ?? "";
-      if (updated) updated.textContent = s.updated_at ?? "";
+      if (raw) raw.textContent = Number(s.raw_value ?? 0).toFixed(2);
+      if (state) state.textContent = s.state ?? "unknown";
+      if (updated) updated.textContent = s.updated_at ?? "-";
 
-      if (state) {
-        state.textContent = s.state ?? "unknown";
-        state.className = `badge ${s.state ?? "unknown"}`;
+      if (card) {
+        card.className = `card sensor ${s.state ?? "unknown"}`;
       }
     }
   } catch (err) {
-    console.error("Dashboard refresh failed:", err);
+    console.error("Sensor refresh failed:", err);
+  }
+
+  try {
+    const modemRes = await fetch("/api/modem/live", { cache: "no-store" });
+    const modem = await modemRes.json();
+
+    const runtimeStatus = document.getElementById("modem-runtime-status");
+    const operator = document.getElementById("modem-operator");
+    const accessTech = document.getElementById("modem-access-tech");
+    const signalQuality = document.getElementById("modem-signal-quality");
+    const ipAddress = document.getElementById("modem-ip-address");
+
+    if (runtimeStatus) runtimeStatus.textContent = modem.runtime_status ?? "-";
+    if (operator) operator.textContent = modem.operator ?? "-";
+    if (accessTech) accessTech.textContent = modem.access_tech ?? "-";
+    if (signalQuality) signalQuality.textContent = modem.signal_quality ?? "-";
+    if (ipAddress) ipAddress.textContent = modem.ip_address || "-";
+  } catch (err) {
+    console.error("Modem refresh failed:", err);
+  }
+
+  try {
+    const uploadRes = await fetch("/api/upload/live", { cache: "no-store" });
+    const upload = await uploadRes.json();
+
+    const lastUploadAt = document.getElementById("upload-last-upload-at");
+    const lastUploadStatus = document.getElementById("upload-last-upload-status");
+    const lastUploadError = document.getElementById("upload-last-upload-error");
+
+    if (lastUploadAt) lastUploadAt.textContent = upload.last_upload_at || "-";
+    if (lastUploadStatus) lastUploadStatus.textContent = upload.last_upload_status || "-";
+    if (lastUploadError) lastUploadError.textContent = upload.last_upload_error || "-";
+  } catch (err) {
+    console.error("Upload refresh failed:", err);
   }
 }
 
