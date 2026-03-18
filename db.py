@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "gateway.db")))
+DB_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "app.db")))
 
 SCHEMA = [
     '''
