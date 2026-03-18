@@ -15,6 +15,16 @@ def get_sensor_rows():
         '''
     )
 
+@bp.route("/api/modem/live")
+def api_modem_live():
+    modem = get_modem_status()
+    return jsonify(modem)
+
+
+@bp.route("/api/upload/live")
+def api_upload_live():
+    upload_runtime = fetch_one("SELECT * FROM upload_runtime WHERE id = 1")
+    return jsonify(dict(upload_runtime) if upload_runtime else {})
 
 @bp.route("/")
 def dashboard():
