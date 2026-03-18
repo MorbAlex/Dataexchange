@@ -12,6 +12,7 @@
       <th>Einheit</th>
       <th>Status</th>
       <th>Updated</th>
+      <th>Verlauf</th>
     </tr>
   </thead>
   <tbody>
@@ -25,6 +26,7 @@
       <td id="unit-{{ s.id }}">{{ s.unit }}</td>
       <td><span id="state-{{ s.id }}" class="badge {{ s.state }}">{{ s.state }}</span></td>
       <td id="updated-{{ s.id }}">{{ s.updated_at }}</td>
+      <td><a href="/sensors/chart/{{ s.id }}">Chart</a></td>
     </tr>
     {% endfor %}
   </tbody>
@@ -33,17 +35,17 @@
 <script>
 async function refreshSensors() {
   try {
-    const response = await fetch("/api/sensors/live", { cache: "no-store" });
-    const sensors = await response.json();
+    const res = await fetch("/api/sensors/live", { cache: "no-store" });
+    const sensors = await res.json();
 
     for (const s of sensors) {
+      const name = document.getElementById(`name-${s.id}`);
+      const channel = document.getElementById(`channel-${s.id}`);
       const raw = document.getElementById(`raw-${s.id}`);
       const scaled = document.getElementById(`scaled-${s.id}`);
       const unit = document.getElementById(`unit-${s.id}`);
-      const updated = document.getElementById(`updated-${s.id}`);
       const state = document.getElementById(`state-${s.id}`);
-      const channel = document.getElementById(`channel-${s.id}`);
-      const name = document.getElementById(`name-${s.id}`);
+      const updated = document.getElementById(`updated-${s.id}`);
 
       if (name) name.textContent = s.name ?? "";
       if (channel) channel.textContent = s.channel ?? "";

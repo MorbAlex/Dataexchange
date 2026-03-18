@@ -1,88 +1,85 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from db import fetch_all, fetch_one, execute, now_iso
 from services.modem_service import get_modem_status, connect_modem, disconnect_modem
-from flask import jsonify
 
 bp = Blueprint("main", __name__)
+
 
 def get_sensor_rows():
     return fetch_all(
         '''
-        SELECT c.*, s.raw_value, s.scaled_value, s.state, s.updated_at
+        SELECT c.*, s.raw_value, s.scaled_value, s.state, s.last_alarm_at, s.updated_at
         FROM sensor_config c
         LEFT JOIN sensor_status s ON s.sensor_id = c.id
         ORDER BY c.id
         '''
     )
+
 
 @bp.route("/")
 def dashboard():
     sensors = get_sensor_rows()
     modem_status = get_modem_status()
     upload_runtime = fetch_one("SELECT * FROM upload_runtime WHERE id = 1")
-    return render_template("dashboard.html", sensors=sensors, modem=modem_status, upload_runtime=upload_runtime)
+    return render_template(
+        "dashboard.html",
+        sensors=sensors,
+        modem=modem_status,
+        upload_runtime=upload_runtime
+    )
+
+
+@bp.route("/sensors/status")
+def sensor_status():
+    return render_template("sensor_status.html", sensors=get_sensor_rows())
 
 @bp.route("/sensors/chart/<int:sensor_id>")
 def sensor_chart(sensor_id):
+    sensor = fetch_one("SELECT * FROM sensor_config WHERE id = ?", (sensor_id,))
+    return render_template("sensor_chart.html", sensor=sensor)
 
+@bp.route("/api/sensors/live")
+def api_sensors_live():
+    sensors = get_sensor_rows()
+    return jsonify([
+        {
+            "id": s["id"],
+            "name": s["name"],
+            "channel": s["channel"],
+            "unit": s["unit"],
+            "raw_value": s["raw_value"],
+            "scaled_value": s["scaled_value"],
+            "state": s["state"],
+            "last_alarm_at": s["last_alarm_at"],
+            "updated_at": s["updated_at"],
+        }
+        for s in sensors
+    ])
+
+
+@bp.route("/api/sensors/history/<int:sensor_id>")
+def api_sensor_history(sensor_id):
     rows = fetch_all(
-        """
-        SELECT scaled_value, created_at
+        '''
+        SELECT id, sensor_id, raw_value, scaled_value, state, created_at
         FROM sensor_history
         WHERE sensor_id = ?
         ORDER BY id DESC
         LIMIT 100
-        """,
-        (sensor_id,)
-    )
-
-    sensor = fetch_one(
-        "SELECT * FROM sensor_config WHERE id = ?",
+        ''',
         (sensor_id,)
     )
 
     rows = list(reversed(rows))
 
-    labels = [r["created_at"] for r in rows]
-    values = [r["scaled_value"] for r in rows]
+    return jsonify({
+        "sensor_id": sensor_id,
+        "labels": [r["created_at"] for r in rows],
+        "raw_values": [r["raw_value"] for r in rows],
+        "scaled_values": [r["scaled_value"] for r in rows],
+        "states": [r["state"] for r in rows],
+    })
 
-    return render_template(
-        "sensor_chart.html",
-        sensor=sensor,
-        labels=labels,
-        values=values
-    )
-
-@bp.route("/api/sensors/live")
-def api_sensors_live():
-    rows = fetch_all(
-        '''
-        SELECT c.id, c.name, c.channel, c.unit,
-               s.raw_value, s.scaled_value, s.state, s.last_alarm_at, s.updated_at
-        FROM sensor_config c
-        LEFT JOIN sensor_status s ON s.sensor_id = c.id
-        ORDER BY c.id
-        '''
-    )
-
-    return jsonify([
-        {
-            "id": r["id"],
-            "name": r["name"],
-            "channel": r["channel"],
-            "unit": r["unit"],
-            "raw_value": r["raw_value"],
-            "scaled_value": r["scaled_value"],
-            "state": r["state"],
-            "last_alarm_at": r["last_alarm_at"],
-            "updated_at": r["updated_at"],
-        }
-        for r in rows
-    ])
-
-@bp.route("/sensors/status")
-def sensor_status():
-    return render_template("sensor_status.html", sensors=get_sensor_rows())
 
 @bp.route("/sensors/config", methods=["GET", "POST"])
 def sensor_config():
@@ -114,11 +111,14 @@ def sensor_config():
             )
         flash("Sensor-Konfiguration gespeichert.", "success")
         return redirect(url_for("main.sensor_config"))
+
     return render_template("sensor_config.html", sensors=get_sensor_rows())
+
 
 @bp.route("/modem/status")
 def modem_status():
     return render_template("modem_status.html", modem=get_modem_status())
+
 
 @bp.route("/modem/config", methods=["GET", "POST"])
 def modem_config():
@@ -140,15 +140,18 @@ def modem_config():
         )
         flash("Modem-Konfiguration gespeichert.", "success")
         return redirect(url_for("main.modem_config"))
+
     config = fetch_one("SELECT * FROM modem_config WHERE id = 1")
     runtime = fetch_one("SELECT * FROM modem_runtime WHERE id = 1")
     return render_template("modem_config.html", config=config, runtime=runtime)
+
 
 @bp.post("/modem/connect")
 def modem_connect():
     ok, message = connect_modem()
     flash(message, "success" if ok else "error")
     return redirect(url_for("main.modem_status"))
+
 
 @bp.post("/modem/disconnect")
 def modem_disconnect():

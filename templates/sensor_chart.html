@@ -1,29 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
+<h1>Verlauf {{ sensor.name }}</h1>
 
-<h1>{{ sensor.name }} Verlauf</h1>
-
-<canvas id="chart" width="800" height="400"></canvas>
+<canvas id="sensorChart" height="120"></canvas>
 
 <script>
-const ctx = document.getElementById('chart');
+let chart;
 
-new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: {{ labels|tojson }},
-        datasets: [{
-            label: '{{ sensor.unit }}',
-            data: {{ values|tojson }},
-            borderWidth: 2,
-            fill: false,
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true
+async function loadChart() {
+  try {
+    const res = await fetch("/api/sensors/history/{{ sensor.id }}", { cache: "no-store" });
+    const data = await res.json();
+
+    const labels = data.labels || [];
+    const values = data.scaled_values || [];
+
+    if (!chart) {
+      const ctx = document.getElementById("sensorChart").getContext("2d");
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "{{ sensor.name }} ({{ sensor.unit }})",
+            data: values,
+            tension: 0.2,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          animation: false
+        }
+      });
+    } else {
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = values;
+      chart.update();
     }
-});
-</script>
+  } catch (err) {
+    console.error("Chart load failed:", err);
+  }
+}
 
+setInterval(loadChart, 1000);
+loadChart();
+</script>
 {% endblock %}
