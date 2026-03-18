@@ -3,7 +3,8 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 
-DB_PATH = os.getenv("DATABASE_PATH", "data/app.db")
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "gateway.db")))
 
 SCHEMA = [
     '''

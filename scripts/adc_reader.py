@@ -1,84 +1,170 @@
-import os
-import math
 import time
-import random
-import sys
+import sqlite3
 from pathlib import Path
+from datetime import datetime, timezone
+import spidev
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from db import init_db, fetch_all, execute, now_iso
+BASE_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = BASE_DIR / "data" / "app.db"
 
-class RealAdcAdapter:
-    def read_all_channels(self):
-        raise NotImplementedError("Bitte echte ADC-Logik in RealAdcAdapter ergänzen.")
 
-class SimulatedAdcAdapter:
-    def __init__(self):
-        self.t0 = time.time()
+class MCP3204Reader:
+    def __init__(self, bus=0, device=0):
+        self.spi = spidev.SpiDev()
+        self.spi.open(bus, device)
+        self.spi.max_speed_hz = 1000000
+        self.spi.mode = 0
 
-    def read_all_channels(self):
-        t = time.time() - self.t0
-        return {
-            0: 2000 + 1000 * math.sin(t / 10),
-            1: 1500 + 800 * math.sin(t / 8 + 0.5),
-            2: 500 + 400 * math.sin(t / 5 + 1.1),
-            3: 3000 + 700 * math.sin(t / 12 + 2.2) + random.uniform(-50, 50),
-        }
+    def read_channel(self, channel: int) -> int:
+        if channel < 0 or channel > 3:
+            raise ValueError("MCP3204 channel must be 0..3")
+
+        cmd = [0x06, (channel & 0x03) << 6, 0x00]
+        resp = self.spi.xfer2(cmd)
+
+        value = ((resp[1] & 0x0F) << 8) | resp[2]
+        return value
+
+    def close(self):
+        self.spi.close()
+
 
 def scale_value(raw, min_raw, max_raw, min_scaled, max_scaled):
     if max_raw == min_raw:
         return min_scaled
-    ratio = (raw - min_raw) / (max_raw - min_raw)
-    return min_scaled + ratio * (max_scaled - min_scaled)
 
-def calc_state(value, low, high):
-    if value < low or value > high:
+    return min_scaled + ((raw - min_raw) / (max_raw - min_raw)) * (max_scaled - min_scaled)
+
+
+def calc_state(value, alarm_low, alarm_high):
+    if alarm_low is not None and value < alarm_low:
         return "alarm"
-    margin = (high - low) * 0.1
-    if value < low + margin or value > high - margin:
-        return "warning"
+
+    if alarm_high is not None and value > alarm_high:
+        return "alarm"
+
     return "ok"
 
+
+def get_sensor_configs(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, name, channel, unit,
+               min_raw, max_raw,
+               min_scaled, max_scaled,
+               alarm_low, alarm_high,
+               enabled
+        FROM sensor_config
+        ORDER BY id
+    """)
+
+    return cur.fetchall()
+
+
+def update_sensor_status(conn, sensor_id, raw, scaled, state):
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO sensor_status
+        (sensor_id, raw_value, scaled_value, state, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(sensor_id) DO UPDATE SET
+            raw_value=excluded.raw_value,
+            scaled_value=excluded.scaled_value,
+            state=excluded.state,
+            updated_at=excluded.updated_at
+    """, (sensor_id, raw, scaled, state, now))
+
+    cur.execute("""
+        INSERT INTO sensor_history
+        (sensor_id, raw_value, scaled_value, state, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (sensor_id, raw, scaled, state, now))
+
+    conn.commit()
+
+
 def main():
-    init_db()
-    mode = os.getenv("ADC_MODE", "sim")
-    adapter = SimulatedAdcAdapter() if mode == "sim" else RealAdcAdapter()
-    print(f"ADC reader gestartet. Modus: {mode}")
 
-    while True:
-        sensors = fetch_all("SELECT * FROM sensor_config ORDER BY id")
-        raw_by_channel = adapter.read_all_channels()
+    print("ADC Reader started")
+    print("Database:", DB_PATH)
 
-        for s in sensors:
-            if not s["enabled"]:
-                raw = 0.0
-                scaled = 0.0
-                state = "disabled"
-            else:
-                raw = float(raw_by_channel.get(s["channel"], 0.0))
-                scaled = scale_value(raw, s["min_raw"], s["max_raw"], s["min_scaled"], s["max_scaled"])
-                state = calc_state(scaled, s["alarm_low"], s["alarm_high"])
+    reader = MCP3204Reader()
 
-            ts = now_iso()
-            execute(
-                '''
-                UPDATE sensor_status
-                SET raw_value=?, scaled_value=?, state=?, updated_at=?
-                WHERE sensor_id=?
-                ''',
-                (raw, scaled, state, ts, s["id"])
-            )
-            execute(
-                '''
-                INSERT INTO sensor_history (sensor_id, raw_value, scaled_value, state, created_at, uploaded)
-                VALUES (?, ?, ?, ?, ?, 0)
-                ''',
-                (s["id"], raw, scaled, state, ts)
-            )
+    try:
 
-        interval_ms = min([s["sample_interval_ms"] for s in sensors]) if sensors else 1000
-        time.sleep(max(interval_ms / 1000.0, 0.2))
+        while True:
+
+            conn = sqlite3.connect(DB_PATH)
+
+            sensor_configs = get_sensor_configs(conn)
+
+            for row in sensor_configs:
+
+                (
+                    sensor_id,
+                    name,
+                    channel,
+                    unit,
+                    min_raw,
+                    max_raw,
+                    min_scaled,
+                    max_scaled,
+                    alarm_low,
+                    alarm_high,
+                    enabled
+                ) = row
+
+                if not enabled:
+                    continue
+
+                try:
+
+                    raw = reader.read_channel(channel)
+
+                    scaled = scale_value(
+                        raw,
+                        min_raw,
+                        max_raw,
+                        min_scaled,
+                        max_scaled
+                    )
+
+                    state = calc_state(
+                        scaled,
+                        alarm_low,
+                        alarm_high
+                    )
+
+                    update_sensor_status(
+                        conn,
+                        sensor_id,
+                        raw,
+                        scaled,
+                        state
+                    )
+
+                    print(
+                        f"Sensor {sensor_id} CH{channel} "
+                        f"raw={raw} scaled={scaled:.3f} {unit} state={state}"
+                    )
+
+                except Exception as e:
+
+                    print(f"Sensor {sensor_id} read error:", e)
+
+            conn.close()
+
+            time.sleep(1)
+
+    finally:
+        reader.close()
+
 
 if __name__ == "__main__":
     main()
