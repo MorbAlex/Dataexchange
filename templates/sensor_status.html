@@ -25,6 +25,12 @@
       <td>{{ s.unit }}</td>
       <td><span class="badge {{ s.state }}">{{ s.state }}</span></td>
       <td>{{ s.updated_at }}</td>
+      <td>
+      <a href="/sensors/chart/{{ s.id }}" class="btn btn-sm btn-secondary">
+        Verlauf
+      </a>
+      </td>
+      <td>
     </tr>
     {% endfor %}
   </tbody>

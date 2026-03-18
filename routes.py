@@ -21,6 +21,37 @@ def dashboard():
     upload_runtime = fetch_one("SELECT * FROM upload_runtime WHERE id = 1")
     return render_template("dashboard.html", sensors=sensors, modem=modem_status, upload_runtime=upload_runtime)
 
+@bp.route("/sensors/chart/<int:sensor_id>")
+def sensor_chart(sensor_id):
+
+    rows = fetch_all(
+        """
+        SELECT scaled_value, created_at
+        FROM sensor_history
+        WHERE sensor_id = ?
+        ORDER BY id DESC
+        LIMIT 100
+        """,
+        (sensor_id,)
+    )
+
+    sensor = fetch_one(
+        "SELECT * FROM sensor_config WHERE id = ?",
+        (sensor_id,)
+    )
+
+    rows = list(reversed(rows))
+
+    labels = [r["created_at"] for r in rows]
+    values = [r["scaled_value"] for r in rows]
+
+    return render_template(
+        "sensor_chart.html",
+        sensor=sensor,
+        labels=labels,
+        values=values
+    )
+
 @bp.route("/sensors/status")
 def sensor_status():
     return render_template("sensor_status.html", sensors=get_sensor_rows())
