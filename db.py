@@ -30,6 +30,7 @@ SCHEMA = [
         raw_value REAL,
         scaled_value REAL,
         state TEXT,
+        last_alarm_at TEXT,
         updated_at TEXT NOT NULL,
         FOREIGN KEY(sensor_id) REFERENCES sensor_config(id)
     )
@@ -85,8 +86,10 @@ DEFAULT_SENSORS = [
     (4, 'Sensor 4', 1, 3, 'V', 0, 4095, 0, 10, 1, 9, 1000),
 ]
 
+
 def now_iso():
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
 
 def get_connection():
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -94,9 +97,11 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
     with get_connection() as conn:
         cur = conn.cursor()
+
         for stmt in SCHEMA:
             cur.execute(stmt)
 
@@ -104,18 +109,23 @@ def init_db():
             cur.execute(
                 '''
                 INSERT OR IGNORE INTO sensor_config
-                (id, name, enabled, channel, unit, min_raw, max_raw, min_scaled, max_scaled, alarm_low, alarm_high, sample_interval_ms, updated_at)
+                (
+                    id, name, enabled, channel, unit,
+                    min_raw, max_raw, min_scaled, max_scaled,
+                    alarm_low, alarm_high, sample_interval_ms, updated_at
+                )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (*row, now_iso())
             )
+
             cur.execute(
                 '''
                 INSERT OR IGNORE INTO sensor_status
-                (sensor_id, raw_value, scaled_value, state, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                (sensor_id, raw_value, scaled_value, state, last_alarm_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ''',
-                (row[0], 0.0, 0.0, 'offline', now_iso())
+                (row[0], 0.0, 0.0, 'offline', None, now_iso())
             )
 
         cur.execute(
@@ -126,6 +136,7 @@ def init_db():
             ''',
             (now_iso(),)
         )
+
         cur.execute(
             '''
             INSERT OR IGNORE INTO modem_runtime
@@ -134,6 +145,7 @@ def init_db():
             ''',
             (now_iso(),)
         )
+
         cur.execute(
             '''
             INSERT OR IGNORE INTO upload_runtime
@@ -142,15 +154,19 @@ def init_db():
             ''',
             (now_iso(),)
         )
+
         conn.commit()
+
 
 def fetch_all(query, params=()):
     with get_connection() as conn:
         return conn.execute(query, params).fetchall()
 
+
 def fetch_one(query, params=()):
     with get_connection() as conn:
         return conn.execute(query, params).fetchone()
+
 
 def execute(query, params=()):
     with get_connection() as conn:

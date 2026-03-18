@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from db import fetch_all, fetch_one, execute, now_iso
 from services.modem_service import get_modem_status, connect_modem, disconnect_modem
+from flask import jsonify
 
 bp = Blueprint("main", __name__)
 
@@ -51,6 +52,33 @@ def sensor_chart(sensor_id):
         labels=labels,
         values=values
     )
+
+@bp.route("/api/sensors/live")
+def api_sensors_live():
+    rows = fetch_all(
+        '''
+        SELECT c.id, c.name, c.channel, c.unit,
+               s.raw_value, s.scaled_value, s.state, s.last_alarm_at, s.updated_at
+        FROM sensor_config c
+        LEFT JOIN sensor_status s ON s.sensor_id = c.id
+        ORDER BY c.id
+        '''
+    )
+
+    return jsonify([
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "channel": r["channel"],
+            "unit": r["unit"],
+            "raw_value": r["raw_value"],
+            "scaled_value": r["scaled_value"],
+            "state": r["state"],
+            "last_alarm_at": r["last_alarm_at"],
+            "updated_at": r["updated_at"],
+        }
+        for r in rows
+    ])
 
 @bp.route("/sensors/status")
 def sensor_status():

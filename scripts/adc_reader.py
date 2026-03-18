@@ -1,11 +1,12 @@
 import time
 import sqlite3
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import traceback
 
 import spidev
 
+ALARM_HOLD_SECONDS = 2
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "app.db"
@@ -176,6 +177,37 @@ def ensure_db_exists() -> None:
     if not DB_PATH.exists():
         raise FileNotFoundError(f"Database not found: {DB_PATH}")
 
+def parse_iso(ts: str | None):
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def determine_state_with_hold(conn, sensor_id, scaled_value, alarm_low, alarm_high):
+    now = datetime.now(timezone.utc)
+
+    row = conn.execute(
+        "SELECT state, last_alarm_at FROM sensor_status WHERE sensor_id = ?",
+        (sensor_id,)
+    ).fetchone()
+
+    is_alarm_now = False
+    if alarm_low is not None and scaled_value < alarm_low:
+        is_alarm_now = True
+    if alarm_high is not None and scaled_value > alarm_high:
+        is_alarm_now = True
+
+    if is_alarm_now:
+        return "alarm", now.isoformat()
+
+    last_alarm_at = parse_iso(row["last_alarm_at"]) if row else None
+    if last_alarm_at and now - last_alarm_at < timedelta(seconds=ALARM_HOLD_SECONDS):
+        return "alarm", row["last_alarm_at"]
+
+    return "ok", None
 
 def main() -> None:
     print("ADC Reader started")
