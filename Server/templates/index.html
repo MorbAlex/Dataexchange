@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>CM5 Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      background: #f5f7fb;
+      color: #1d2433;
+    }
+
+    h1, h2 {
+      margin-bottom: 12px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+
+    .status {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: bold;
+    }
+
+    .connected {
+      background: #dff5e2;
+      color: #176b2d;
+    }
+
+    .disconnected {
+      background: #ffe1e1;
+      color: #9d1a1a;
+    }
+
+    .sensor-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .sensor-value {
+      font-size: 28px;
+      font-weight: bold;
+      margin: 8px 0;
+    }
+
+    .muted {
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    .state-pill {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+    }
+
+    canvas {
+      background: white;
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+
+    @media (max-width: 980px) {
+      .sensor-grid {
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .sensor-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>CM5 Monitor</h1>
+
+  <div class="topbar">
+    <section class="card">
+      <h2>Gerätestatus</h2>
+      <div>
+        <span id="connection-state" class="status {{ connection_state }}">{{ connection_state|upper }}</span>
+      </div>
+      <p class="muted">Device: <span id="device-id">cm5-prototype</span></p>
+      <p class="muted">Letzter Empfang: <span id="last-seen-at">{{ device.last_seen_at if device else '-' }}</span></p>
+      <p class="muted">Timeout: {{ device_timeout_seconds }} Sekunden</p>
+    </section>
+  </div>
+
+  <h2>Aktuelle Sensorwerte</h2>
+  <div class="sensor-grid" id="sensor-grid">
+    {% for s in sensors %}
+    <section class="card" id="sensor-card-{{ s.sensor_id }}">
+      <h3 id="sensor-name-{{ s.sensor_id }}">{{ s.sensor_name }}</h3>
+      <div class="sensor-value">
+        <span id="sensor-value-{{ s.sensor_id }}">{{ "%.2f"|format(s.scaled_value or 0) }}</span>
+        <span id="sensor-unit-{{ s.sensor_id }}">{{ s.unit }}</span>
+      </div>
+      <div class="muted">Rohwert: <span id="sensor-raw-{{ s.sensor_id }}">{{ "%.2f"|format(s.raw_value or 0) }}</span></div>
+      <div class="state-pill" id="sensor-state-{{ s.sensor_id }}">{{ s.state }}</div>
+      <div class="muted">Sensor-ID: {{ s.sensor_id }}</div>
+      <div class="muted">Zeit: <span id="sensor-time-{{ s.sensor_id }}">{{ s.created_at }}</span></div>
+    </section>
+    {% endfor %}
+  </div>
+
+  <h2>Verlauf Sensor 1–4</h2>
+  <canvas id="sensorChart" height="120"></canvas>
+
+  <script>
+    let chart;
+
+    async function refreshLive() {
+      const res = await fetch("/api/device/cm5-prototype/live", { cache: "no-store" });
+      const data = await res.json();
+
+      const connectionState = document.getElementById("connection-state");
+      const lastSeenAt = document.getElementById("last-seen-at");
+
+      if (connectionState) {
+        connectionState.textContent = (data.connection_state || "disconnected").toUpperCase();
+        connectionState.className = `status ${data.connection_state || "disconnected"}`;
+      }
+
+      if (lastSeenAt) {
+        lastSeenAt.textContent = data.last_seen_at || "-";
+      }
+
+      for (const s of data.sensors || []) {
+        const id = s.sensor_id;
+        const name = document.getElementById(`sensor-name-${id}`);
+        const value = document.getElementById(`sensor-value-${id}`);
+        const unit = document.getElementById(`sensor-unit-${id}`);
+        const raw = document.getElementById(`sensor-raw-${id}`);
+        const state = document.getElementById(`sensor-state-${id}`);
+        const time = document.getElementById(`sensor-time-${id}`);
+
+        if (name) name.textContent = s.sensor_name || `Sensor ${id}`;
+        if (value) value.textContent = Number(s.scaled_value ?? 0).toFixed(2);
+        if (unit) unit.textContent = s.unit || "";
+        if (raw) raw.textContent = Number(s.raw_value ?? 0).toFixed(2);
+        if (state) state.textContent = s.state || "-";
+        if (time) time.textContent = s.created_at || s.received_at || "-";
+      }
+    }
+
+    async function refreshChart() {
+      const res = await fetch("/api/device/cm5-prototype/history?limit=120", { cache: "no-store" });
+      const data = await res.json();
+
+      const series = data.series || {};
+      const labels = new Set();
+
+      for (const key of Object.keys(series)) {
+        for (const p of series[key].points || []) {
+          labels.add(p.x);
+        }
+      }
+
+      const sortedLabels = Array.from(labels).sort();
+
+      function buildDataset(sensorKey) {
+        const entry = series[sensorKey] || { label: `Sensor ${sensorKey}`, points: [], unit: "" };
+        const pointMap = new Map((entry.points || []).map(p => [p.x, p.y]));
+        return {
+          label: `${entry.label}${entry.unit ? " (" + entry.unit + ")" : ""}`,
+          data: sortedLabels.map(x => pointMap.has(x) ? pointMap.get(x) : null),
+          tension: 0.2
+        };
+      }
+
+      const datasets = ["1", "2", "3", "4"].map(buildDataset);
+
+      if (!chart) {
+        const ctx = document.getElementById("sensorChart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: sortedLabels,
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            animation: false,
+            spanGaps: true
+          }
+        });
+      } else {
+        chart.data.labels = sortedLabels;
+        chart.data.datasets = datasets;
+        chart.update();
+      }
+    }
+
+    async function refreshAll() {
+      try {
+        await refreshLive();
+        await refreshChart();
+      } catch (err) {
+        console.error("Refresh failed:", err);
+      }
+    }
+
+    refreshAll();
+    setInterval(refreshAll, 5000);
+  </script>
+</body>
+</html>

@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from db import init_db, fetch_all, execute, now_iso, fetch_one
 
-UPLOAD_URL = os.getenv("UPLOAD_URL", "")
+UPLOAD_URL = os.getenv("UPLOAD_URL", "10.178.164.33:8000/ingest")  # Beispiel: "http://example.com/ingest"
 UPLOAD_TOKEN = os.getenv("UPLOAD_TOKEN", "")
 
 def post_json(url, payload, token=""):
