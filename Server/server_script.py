@@ -161,12 +161,24 @@ def ingest():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id, sensor_id) DO UPDATE SET
                 sensor_name = excluded.sensor_name,
-                raw_value = excluded.raw_value,
-                scaled_value = excluded.scaled_value,
-                unit = excluded.unit,
-                state = excluded.state,
-                created_at = excluded.created_at,
-                received_at = excluded.received_at
+                raw_value = CASE
+                    WHEN latest_sensor_values.created_at IS NULL OR excluded.created_at >= latest_sensor_values.created_at
+                    THEN excluded.raw_value ELSE latest_sensor_values.raw_value END,
+                scaled_value = CASE
+                    WHEN latest_sensor_values.created_at IS NULL OR excluded.created_at >= latest_sensor_values.created_at
+                    THEN excluded.scaled_value ELSE latest_sensor_values.scaled_value END,
+                unit = CASE
+                    WHEN latest_sensor_values.created_at IS NULL OR excluded.created_at >= latest_sensor_values.created_at
+                    THEN excluded.unit ELSE latest_sensor_values.unit END,
+                state = CASE
+                    WHEN latest_sensor_values.created_at IS NULL OR excluded.created_at >= latest_sensor_values.created_at
+                    THEN excluded.state ELSE latest_sensor_values.state END,
+                created_at = CASE
+                    WHEN latest_sensor_values.created_at IS NULL OR excluded.created_at >= latest_sensor_values.created_at
+                    THEN excluded.created_at ELSE latest_sensor_values.created_at END,
+                received_at = CASE
+                    WHEN latest_sensor_values.created_at IS NULL OR excluded.created_at >= latest_sensor_values.created_at
+                    THEN excluded.received_at ELSE latest_sensor_values.received_at END
             """, (
                 device_id, sensor_id, sensor_name,
                 raw_value, scaled_value, unit, state, created_at, received_at
@@ -265,7 +277,7 @@ def api_device_history(device_id):
             SELECT device_id, sensor_id, sensor_name, scaled_value, unit, state, created_at, received_at
             FROM sensor_history
             WHERE device_id = ?
-            ORDER BY id DESC
+            ORDER BY created_at DESC
             LIMIT ?
         """, (device_id, limit)).fetchall()
 
