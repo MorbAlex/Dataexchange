@@ -47,7 +47,7 @@ def main():
             FROM sensor_history h
             JOIN sensor_config c ON c.id = h.sensor_id
             WHERE h.uploaded = 0
-            ORDER BY h.id
+            ORDER BY h.id DESC
             LIMIT 100
             '''
         )
