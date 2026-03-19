@@ -52,6 +52,8 @@ def main():
             '''
         )
 
+        rows = list(reversed(rows))
+
         if not rows:
             time.sleep(5)
             continue
