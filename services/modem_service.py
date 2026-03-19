@@ -1,10 +1,15 @@
 import os
 import re
 import subprocess
+import time
+
 from db import fetch_one, execute, now_iso
 
+
 WWAN_IFACE = os.getenv("WWAN_IFACE", "wwan0")
-MODEM_ID = os.getenv("MODEM_ID", "0")
+DEFAULT_MODEM_ID = os.getenv("MODEM_ID", "0")
+MMCLI_BIN = os.getenv("MMCLI_BIN", "mmcli")
+IP_BIN = os.getenv("IP_BIN", "ip")
 
 
 def _run(cmd):
@@ -15,24 +20,27 @@ def _run(cmd):
 def _update_runtime(status=None, error=None, packet_data_handle=None, last_ip=None):
     current = fetch_one("SELECT * FROM modem_runtime WHERE id = 1")
 
+    if current is None:
+        return
+
     execute(
-        '''
+        """
         UPDATE modem_runtime
         SET packet_data_handle=?, last_ip=?, last_status=?, last_error=?, updated_at=?
         WHERE id=1
-        ''',
+        """,
         (
             packet_data_handle if packet_data_handle is not None else current["packet_data_handle"],
             last_ip if last_ip is not None else current["last_ip"],
             status if status is not None else current["last_status"],
             error if error is not None else current["last_error"],
             now_iso(),
-        )
+        ),
     )
 
 
 def _get_iface_ip():
-    rc, out, _ = _run(["ip", "-4", "addr", "show", WWAN_IFACE])
+    rc, out, _ = _run([IP_BIN, "-4", "addr", "show", WWAN_IFACE])
     if rc != 0:
         return ""
 
@@ -40,35 +48,122 @@ def _get_iface_ip():
     return match.group(1) if match else ""
 
 
-def _recover_modem():
-    _run(["mmcli", "-m", str(MODEM_ID), "--disable"])
-    _run(["mmcli", "-m", str(MODEM_ID), "--enable"])
+def _find_modem_id():
+    """
+    Sucht die aktuelle Modem-ID dynamisch.
+    Beispiel mmcli -L:
+      /org/freedesktop/ModemManager1/Modem/0 [Quectel] RM500Q-GL
+    """
+    rc, out, err = _run([MMCLI_BIN, "-L"])
+    if rc != 0:
+        return None
+
+    modem_ids = []
+
+    for line in out.splitlines():
+        match = re.search(r"/Modem/(\d+)", line)
+        if match:
+            modem_ids.append(match.group(1))
+
+    if not modem_ids:
+        return None
+
+    # Bevorzuge die ENV-ID, falls sie noch existiert
+    if DEFAULT_MODEM_ID in modem_ids:
+        return DEFAULT_MODEM_ID
+
+    # Sonst nimm das erste gefundene Modem
+    return modem_ids[0]
+
+
+def _wait_for_modem(timeout=15, interval=1.0):
+    start = time.time()
+
+    while time.time() - start < timeout:
+        modem_id = _find_modem_id()
+        if modem_id is not None:
+            return modem_id
+        time.sleep(interval)
+
+    return None
+
+
+def _get_modem_id_or_raise():
+    modem_id = _wait_for_modem()
+    if modem_id is None:
+        raise RuntimeError("Kein Modem von ModemManager gefunden")
+    return modem_id
 
 
 def _extract_bearer_path(text: str) -> str:
-    # Beispiel:
-    # Successfully created new bearer in modem /org/freedesktop/ModemManager1/Modem/0/Bearer/1
-    match = re.search(r'(/org/freedesktop/ModemManager1/Bearer/\d+|/org/freedesktop/ModemManager1/Modem/\d+/Bearer/\d+)', text)
+    match = re.search(
+        r"(/org/freedesktop/ModemManager1/Bearer/\d+|/org/freedesktop/ModemManager1/Modem/\d+/Bearer/\d+)",
+        text,
+    )
     return match.group(1) if match else ""
 
 
-def _list_bearers():
-    rc, out, err = _run(["mmcli", "-m", str(MODEM_ID), "--list-bearers"])
+def _list_bearers(modem_id):
+    rc, out, err = _run([MMCLI_BIN, "-m", str(modem_id), "--list-bearers"])
     if rc != 0:
         return []
 
     bearers = []
     for line in out.splitlines():
-        m = re.search(r'(/org/freedesktop/ModemManager1/Bearer/\d+|/org/freedesktop/ModemManager1/Modem/\d+/Bearer/\d+)', line)
-        if m:
-            bearers.append(m.group(1))
+        match = re.search(
+            r"(/org/freedesktop/ModemManager1/Bearer/\d+|/org/freedesktop/ModemManager1/Modem/\d+/Bearer/\d+)",
+            line,
+        )
+        if match:
+            bearers.append(match.group(1))
+
     return bearers
 
 
-def _delete_all_bearers():
-    for bearer in _list_bearers():
-        _run(["mmcli", "-b", bearer, "--disconnect"])
-        _run(["mmcli", "-m", str(MODEM_ID), f"--delete-bearer={bearer}"])
+def _delete_all_bearers(modem_id):
+    for bearer in _list_bearers(modem_id):
+        _run([MMCLI_BIN, "-b", bearer, "--disconnect"])
+        _run([MMCLI_BIN, "-m", str(modem_id), f"--delete-bearer={bearer}"])
+
+
+def _disable_enable_modem(modem_id):
+    _run([MMCLI_BIN, "-m", str(modem_id), "--disable"])
+    time.sleep(2)
+    _run([MMCLI_BIN, "-m", str(modem_id), "--enable"])
+    time.sleep(3)
+
+
+def _reset_modem(modem_id):
+    _run([MMCLI_BIN, "-m", str(modem_id), "--reset"])
+    time.sleep(5)
+
+
+def _recover_modem():
+    """
+    Versucht ein soft recovery:
+    - aktuelle Modem-ID finden
+    - disable/enable
+    - danach Modem-ID neu suchen
+    """
+    modem_id = _find_modem_id()
+    if modem_id is None:
+        return _wait_for_modem()
+
+    _disable_enable_modem(modem_id)
+    return _wait_for_modem()
+
+
+def _hard_recover_modem():
+    """
+    Härteres Recovery mit Reset.
+    Danach die neue Modem-ID erneut suchen.
+    """
+    modem_id = _find_modem_id()
+    if modem_id is None:
+        return _wait_for_modem()
+
+    _reset_modem(modem_id)
+    return _wait_for_modem(timeout=20, interval=1.0)
 
 
 def get_modem_status():
@@ -77,6 +172,7 @@ def get_modem_status():
 
     status = {
         "present": False,
+        "modem_id": None,
         "operator": "-",
         "access_tech": "-",
         "signal_quality": "-",
@@ -93,7 +189,14 @@ def get_modem_status():
         "bearers": [],
     }
 
-    rc, out, err = _run(["mmcli", "-m", str(MODEM_ID)])
+    modem_id = _find_modem_id()
+    if modem_id is None:
+        status["last_error"] = "Modem nicht verfügbar"
+        return status
+
+    status["modem_id"] = modem_id
+
+    rc, out, err = _run([MMCLI_BIN, "-m", str(modem_id)])
     if rc != 0:
         status["last_error"] = err or out or "Modem nicht verfügbar"
         return status
@@ -105,14 +208,19 @@ def get_modem_status():
 
         if "signal quality" in s and "|" in s:
             status["signal_quality"] = s.split("|", 1)[1].strip()
+
         elif "operator name" in s and "|" in s:
             status["operator"] = s.split("|", 1)[1].strip()
+
         elif "access tech" in s and "|" in s:
             status["access_tech"] = s.split("|", 1)[1].strip()
+
         elif s.startswith("state") and "|" in s:
             status["registration_state"] = s.split("|", 1)[1].strip()
+
         elif "SIM" in s and "|" in s:
             status["sim_state"] = s.split("|", 1)[1].strip()
+
         elif "bearers" in s and "|" in s:
             status["bearers"] = [x.strip() for x in s.split("|", 1)[1].split(",") if x.strip()]
 
@@ -128,24 +236,28 @@ def connect_modem():
     config = fetch_one("SELECT * FROM modem_config WHERE id = 1")
     apn = config["apn"] if config else "internet"
 
-    # Alte Bearer wegräumen, damit wir keine verwaisten Sessions ansammeln
-    _delete_all_bearers()
+    modem_id = _find_modem_id()
+    if modem_id is None:
+        _update_runtime(status="connect_failed", error="Kein Modem gefunden")
+        return False, "Verbinden fehlgeschlagen: Kein Modem gefunden"
 
-    rc, out, err = _run([
-        "mmcli",
-        "-m",
-        str(MODEM_ID),
-        f"--create-bearer=apn={apn}"
-    ])
+    # Alte Bearer vorher wegräumen
+    _delete_all_bearers(modem_id)
+
+    rc, out, err = _run([MMCLI_BIN, "-m", str(modem_id), f"--create-bearer=apn={apn}"])
 
     if rc != 0:
-        _recover_modem()
-        rc, out, err = _run([
-            "mmcli",
-            "-m",
-            str(MODEM_ID),
-            f"--create-bearer=apn={apn}"
-        ])
+        modem_id = _recover_modem()
+        if modem_id is not None:
+            _delete_all_bearers(modem_id)
+            rc, out, err = _run([MMCLI_BIN, "-m", str(modem_id), f"--create-bearer=apn={apn}"])
+
+    # Sonderfall: failed state -> hartes Recovery
+    if rc != 0 and "failed state" in f"{out} {err}".lower():
+        modem_id = _hard_recover_modem()
+        if modem_id is not None:
+            _delete_all_bearers(modem_id)
+            rc, out, err = _run([MMCLI_BIN, "-m", str(modem_id), f"--create-bearer=apn={apn}"])
 
     if rc != 0:
         message = err or out or "Bearer konnte nicht erstellt werden"
@@ -158,12 +270,14 @@ def connect_modem():
         _update_runtime(status="connect_failed", error=message, packet_data_handle="", last_ip="")
         return False, f"Verbinden fehlgeschlagen: {message}"
 
-    rc, out, err = _run(["mmcli", "-b", bearer_path, "--connect"])
+    rc, out, err = _run([MMCLI_BIN, "-b", bearer_path, "--connect"])
     if rc != 0:
         message = err or out or "Bearer-Verbindung fehlgeschlagen"
         _update_runtime(status="connect_failed", error=message, packet_data_handle=bearer_path, last_ip="")
         return False, f"Verbinden fehlgeschlagen: {message}"
 
+    # Kurz warten, damit Interface/IP da sind
+    time.sleep(2)
     ip_addr = _get_iface_ip()
 
     _update_runtime(
@@ -180,15 +294,24 @@ def disconnect_modem():
     runtime = fetch_one("SELECT * FROM modem_runtime WHERE id = 1")
     bearer_path = runtime["packet_data_handle"] if runtime else ""
 
-    if bearer_path:
-        _run(["mmcli", "-b", bearer_path, "--disconnect"])
-        _run(["mmcli", "-m", str(MODEM_ID), f"--delete-bearer={bearer_path}"])
-    else:
-        # Fallback: alle Bearer sauber abbauen
-        _delete_all_bearers()
+    modem_id = _find_modem_id()
+    if modem_id is None:
+        _update_runtime(
+            status="disconnected",
+            error="",
+            packet_data_handle="",
+            last_ip="",
+        )
+        return True, "Modem war bereits nicht verfügbar."
 
-    _run(["ip", "link", "set", WWAN_IFACE, "down"])
-    _run(["ip", "link", "set", WWAN_IFACE, "up"])
+    if bearer_path:
+        _run([MMCLI_BIN, "-b", bearer_path, "--disconnect"])
+        _run([MMCLI_BIN, "-m", str(modem_id), f"--delete-bearer={bearer_path}"])
+    else:
+        _delete_all_bearers(modem_id)
+
+    _run([IP_BIN, "link", "set", WWAN_IFACE, "down"])
+    _run([IP_BIN, "link", "set", WWAN_IFACE, "up"])
 
     _update_runtime(
         status="disconnected",
