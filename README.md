@@ -15,6 +15,16 @@ Python-only Prototyp für Raspberry Pi CM5 mit:
 - QMI-Verbindung für Quectel RM500/RM500Q via `qmicli`
 - persistente Einstellungen in SQLite
 
+## Requirements
+
+- Python = 3.13.2
+- Flask = 3.0.3
+- python-dotenv = 1.0.1
+- modemmanager
+- libqmi-utils
+- udhcpc
+- screen
+
 ## Funktionen
 
 ### Sensoren
@@ -43,8 +53,6 @@ sudo apt install -y modemmanager libqmi-utils udhcpc screen
 ## Projekt starten
 
 ```bash
-unzip cm5_python_prototype_qmi.zip
-cd cm5_python_prototype_qmi
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
